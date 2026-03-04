@@ -34,6 +34,15 @@ function connectNative() {
   return nativePort;
 }
 
+// ---------------------------------------------------------------------------
+// Badge indicator for playback state
+// ---------------------------------------------------------------------------
+
+function updateBadge(playing) {
+  chrome.action.setBadgeText({ text: playing ? "▶" : "" });
+  chrome.action.setBadgeBackgroundColor({ color: "#ff4e45" });
+}
+
 function sendNative(msg) {
   const port = connectNative();
   if (port) {
@@ -187,6 +196,7 @@ async function handleBackgroundMessage(msg, sendResponse) {
           },
           isPlaying: true,
         });
+        updateBadge(true);
         sendResponse({ ok: true });
         break;
       }
@@ -194,6 +204,7 @@ async function handleBackgroundMessage(msg, sendResponse) {
       case "pause": {
         chrome.runtime.sendMessage({ target: "offscreen", action: "pause" });
         await chrome.storage.local.set({ isPlaying: false });
+        updateBadge(false);
         sendResponse({ ok: true });
         break;
       }
@@ -202,6 +213,7 @@ async function handleBackgroundMessage(msg, sendResponse) {
         await ensureOffscreen();
         chrome.runtime.sendMessage({ target: "offscreen", action: "resume" });
         await chrome.storage.local.set({ isPlaying: true });
+        updateBadge(true);
         sendResponse({ ok: true });
         break;
       }
@@ -252,6 +264,7 @@ chrome.runtime.onMessage.addListener((msg) => {
       chrome.storage.local.set({ playbackTime: msg.currentTime, playbackDuration: msg.duration });
     } else if (msg.event === "ended") {
       chrome.storage.local.set({ isPlaying: false, playbackTime: 0 });
+      updateBadge(false);
       chrome.runtime.sendMessage({ target: "popup", event: "ended" }).catch(() => {});
     } else if (msg.event === "error") {
       chrome.runtime.sendMessage({ target: "popup", event: "playback_error", message: msg.message }).catch(() => {});
@@ -263,8 +276,10 @@ chrome.runtime.onMessage.addListener((msg) => {
 // Startup: connect native host
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   connectNative();
+  const { isPlaying } = await chrome.storage.local.get("isPlaying");
+  updateBadge(!!isPlaying);
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
