@@ -17,6 +17,7 @@ import uuid
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 # ---------------------------------------------------------------------------
 # Protect stdin/stdout BEFORE importing anything that might write to them.
@@ -175,8 +176,20 @@ def stop_file_server() -> None:
 # yt-dlp download logic
 # ---------------------------------------------------------------------------
 
+def strip_playlist_params(url: str) -> str:
+    """Remove playlist-related query params so yt-dlp only downloads one video."""
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    params.pop("list", None)
+    params.pop("start_radio", None)
+    params.pop("index", None)
+    cleaned = urlencode(params, doseq=True)
+    return urlunparse(parsed._replace(query=cleaned))
+
+
 def download_video(url: str, output_dir: str, download_id: str) -> None:
     """Download a YouTube video as MP3, sending progress messages."""
+    url = strip_playlist_params(url)
     output_dir = str(Path(output_dir).expanduser().resolve())
     os.makedirs(output_dir, exist_ok=True)
 
@@ -216,6 +229,7 @@ def download_video(url: str, output_dir: str, download_id: str) -> None:
 
     ydl_opts = {
         "format": "bestaudio/best",
+        "noplaylist": True,
         "outtmpl": os.path.join(output_dir, "%(title)s.%(ext)s"),
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
